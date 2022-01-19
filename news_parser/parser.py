@@ -62,7 +62,7 @@ def collect_articles(output_file='articles.json'):
 	article_url_regex_raw = '(?:^|\W)http:\/\/www\.bbc\.co\.uk\/news(?:^|\W)([a-z|-]+)+([0-9])+'
 	article_url_regex = re.compile(article_url_regex_raw)
 
-	date_range = pd.date_range(start="2018-01-01", end="2018-01-01")
+	date_range = pd.date_range(start="2021-03-01", end="2021-05-01")
 	for date in date_range:
 		counter_date = 0
 		year, month, day = str(date.date()).split('-')
@@ -80,10 +80,11 @@ def collect_articles(output_file='articles.json'):
 		print(f'[LOG] Collected {len(collected_links.keys())} articles for {year}/{month}/{day},')
 
 
-	for url in collected_links.keys():
-		print(f'[LOG] Parsing article at {url}')
+	total = len(collected_links.keys())
+	for i, url in enumerate(collected_links.keys()):
+		print(f'[LOG] Parsing article at {url}, {i}/{total}')
 
-		article_page = get_page(url, filename='test.html')
+		article_page = get_page(url)
 		article_content = parse_article(article_page, url)
 		if article_content is not None:
 			collected.append(article_content)
