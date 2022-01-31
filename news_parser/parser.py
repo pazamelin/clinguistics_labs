@@ -7,6 +7,21 @@ import http
 import re
 import pandas as pd
 from datetime import datetime
+import argparse
+import pathlib
+from enum import Enum
+
+
+MSG_LBL_BASE = '[PARSER]'
+MSG_LBL_INFO = f'{MSG_LBL_BASE}[INFO]'
+MSG_LBL_FAIL = f'{MSG_LBL_BASE}[FAIL]'
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Parse news atricles from bbc.co.uk')
+    parser.add_argument('--date', type=str, required=True, help='date string (YYYY-MM-DD)')
+    args = parser.parse_args()
+    return args
 
 
 def get_page(url, filename=None):
@@ -20,7 +35,8 @@ def get_page(url, filename=None):
 				file.write(str(soup.prettify()))
 		return content
 	else:
-		raise Exception(f'{url}: {http.client.responses[status]}')
+		print(f'{MSG_LBL_FAIL} {url}: {http.client.responses[status]}')
+		return None
 
 
 def parse_article(page, url):
@@ -47,55 +63,66 @@ def parse_article(page, url):
 			text_blocks = [tb.text for tb in text_blocks]
 			content['text'] = '\n'.join(text_blocks)
 	except Exception as e:
-		print(f'[ERROR] {e}')
+		print(f'{MSG_LBL_FAIL} {e}')
 		return None
 
 	return content
 
 
-def collect_articles(output_file='articles.json'):
-	collected = []
-
-	collected_links = {}
+def collect_urls(date):
+	date = pd.to_datetime(date)
+	collected = set()
 
 	archive_url_base = 'https://dracos.co.uk/made/bbc-news-archive'
 	article_url_regex_raw = '(?:^|\W)http:\/\/www\.bbc\.co\.uk\/news(?:^|\W)([a-z|-]+)+([0-9])+'
 	article_url_regex = re.compile(article_url_regex_raw)
 
-	date_range = pd.date_range(start="2021-03-01", end="2021-05-01")
-	for date in date_range:
-		counter_date = 0
-		year, month, day = str(date.date()).split('-')
-		print(f'[LOG] Collecting articles for {year}/{month}/{day} ...')
+	year, month, day = str(date.date()).split('-')
+	print(f'{MSG_LBL_INFO} Collecting articles for {year}/{month}/{day} ...')
 
-		archive_url = f'{archive_url_base}/{year}/{month}/{day}/'
-		page = get_page(archive_url)
+	archive_url = f'{archive_url_base}/{year}/{month}/{day}/'
+	page = get_page(archive_url)
+	if page is not None:
 		soup = bs4.BeautifulSoup(page, 'html.parser')
 		urls_tags = soup.find_all('a')
+
 		for tag in urls_tags:
 			url = tag['href']
 			if article_url_regex.match(url):
-				collected_links[url] = 1
+				collected.add(url)
 
-		print(f'[LOG] Collected {len(collected_links.keys())} articles for {year}/{month}/{day},')
+	print(f'{MSG_LBL_INFO} Collected {len(collected)} articles links for {year}/{month}/{day},')
+
+	return collected
 
 
-	total = len(collected_links.keys())
-	for i, url in enumerate(collected_links.keys()):
-		print(f'[LOG] Parsing article at {url}, {i}/{total}')
+def parse_urls(urls):
+	parsed = []
+	total = len(urls)
+
+	for i, url in enumerate(urls):
+		print(f'{MSG_LBL_INFO} Parsing {url}, {i + 1}/{total}')
 
 		article_page = get_page(url)
 		article_content = parse_article(article_page, url)
 		if article_content is not None:
-			collected.append(article_content)
+			parsed.append(article_content)
 
-	catalog = {'catalog': collected}
-	with open(output_file, 'w') as fout:
-		json.dump(catalog, fout, indent=2)
+	return parsed
 
 
 def main():
-	collect_articles()
+	args = parse_args()
+	print(f'{MSG_LBL_BASE} date - {args.date}')	
+
+	urls = collect_urls(args.date)
+	parsed = parse_urls(urls)
+
+	my_path = pathlib.Path(__file__).parent.resolve()
+	output_filename = f'{my_path}/artifacts/{args.date}.json'
+	catalog = {'catalog': parsed}
+	with open(output_filename, 'w') as fout:
+		json.dump(catalog, fout, indent=2)
 
 
 if __name__ == "__main__":
